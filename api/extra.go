@@ -112,12 +112,14 @@ func (dr *ProdHandleResolver) ResolveHandleToDid(ctx context.Context, handle str
 		}
 	}
 
+	doDns := !strings.HasSuffix(handle, ".bsky.social")
+
 	var wkres, dnsres string
 	var wkerr, dnserr error
 
 	var wg sync.WaitGroup
-	wg.Add(2)
 
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		wkres, wkerr = dr.resolveWellKnown(ctx, handle)
@@ -125,17 +127,20 @@ func (dr *ProdHandleResolver) ResolveHandleToDid(ctx context.Context, handle str
 			cancel()
 		}
 	}()
-	go func() {
-		defer wg.Done()
-		dnsres, dnserr = dr.resolveDNS(ctx, handle)
-		if dnserr == nil {
-			cancel()
-		}
-	}()
+	if doDns {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			dnsres, dnserr = dr.resolveDNS(ctx, handle)
+			if dnserr == nil {
+				cancel()
+			}
+		}()
+	}
 
 	wg.Wait()
 
-	if dnserr == nil {
+	if doDns && dnserr == nil {
 		return dnsres, nil
 	}
 

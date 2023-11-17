@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -73,7 +74,8 @@ type BGS struct {
 
 	// TODO: at some point we will want to lock specific DIDs, this lock as is
 	// is overly broad, but i dont expect it to be a bottleneck for now
-	extUserLk sync.Mutex
+	//extUserLk sync.Mutex
+	extUserLkMap sync.Map
 
 	repoman *repomgr.RepoManager
 
@@ -88,6 +90,30 @@ type BGS struct {
 
 	// Management of Compaction
 	compactor *Compactor
+}
+
+type didLocker struct {
+	syncMap *sync.Map
+	did     string
+}
+
+func (l *didLocker) Lock() {
+	for {
+		_, wasLocked := l.syncMap.LoadOrStore(l.did, true)
+		if !wasLocked {
+			return
+		}
+
+		time.Sleep(time.Duration(10+rand.Intn(10)) * time.Millisecond)
+	}
+}
+
+func (l *didLocker) Unlock() {
+	l.syncMap.Delete(l.did)
+}
+
+func (bgs *BGS) extUserLk(did string) sync.Locker {
+	return &didLocker{syncMap: &bgs.extUserLkMap, did: did}
 }
 
 type PDSResync struct {
@@ -1112,8 +1138,8 @@ func (s *BGS) createExternalUser(ctx context.Context, did string) (*models.Actor
 		validHandle = false
 	}
 
-	s.extUserLk.Lock()
-	defer s.extUserLk.Unlock()
+	s.extUserLk(did).Lock()
+	defer s.extUserLk(did).Unlock()
 
 	exu, err := s.Index.LookupUserByDid(ctx, did)
 	if err == nil {
