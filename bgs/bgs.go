@@ -29,7 +29,6 @@ import (
 	"github.com/bluesky-social/indigo/models"
 	"github.com/bluesky-social/indigo/repomgr"
 	"github.com/bluesky-social/indigo/xrpc"
-	"golang.org/x/sync/semaphore"
 	"golang.org/x/time/rate"
 
 	"github.com/gorilla/websocket"
@@ -1406,43 +1405,63 @@ func (bgs *BGS) ResyncPDS(ctx context.Context, pds models.PDS) error {
 	resync = bgs.SetResyncStatus(pds.ID, "checking revs")
 
 	// Create a buffered channel for collecting results
-	results := make(chan revCheckResult, len(repos))
-	sem := semaphore.NewWeighted(40)
+	results := make(chan revCheckResult, 20)
 
 	// Check repo revs against our local copy and enqueue crawls for any that are out of date
-	for _, r := range repos {
-		go func(r comatproto.SyncListRepos_Repo) {
-			if err := sem.Acquire(ctx, 1); err != nil {
-				log.Errorw("failed to acquire semaphore", "error", err)
-				results <- revCheckResult{err: err}
-				return
+	checkRepo := func(r comatproto.SyncListRepos_Repo) {
+		log := log.With("did", r.Did, "remote_rev", r.Rev)
+		// Fetches the user if we have it, otherwise automatically enqueues it for crawling
+	retry:
+		ai, err := bgs.Index.GetUserOrMissing(ctx, r.Did)
+		if err != nil {
+			var xrpcErr *xrpc.Error
+			if errors.As(err, &xrpcErr) {
+				if xrpcErr.StatusCode == http.StatusTooManyRequests {
+					if xrpcErr.Ratelimit != nil {
+						log.Errorf("we're getting throttled, sleeping until %s", xrpcErr.Ratelimit.Reset)
+						time.Sleep(time.Until(xrpcErr.Ratelimit.Reset))
+					} else {
+						log.Errorf("we're getting throttled, sleeping for a minute")
+						time.Sleep(time.Minute + time.Duration(rand.Intn(30))*time.Second)
+					}
+					goto retry
+				}
 			}
-			defer sem.Release(1)
+			log.Errorw("failed to get user while resyncing PDS, we can't recrawl it", "error", err)
+			results <- revCheckResult{err: err}
+			return
+		}
 
-			log := log.With("did", r.Did, "remote_rev", r.Rev)
-			// Fetches the user if we have it, otherwise automatically enqueues it for crawling
-			ai, err := bgs.Index.GetUserOrMissing(ctx, r.Did)
-			if err != nil {
-				log.Errorw("failed to get user while resyncing PDS, we can't recrawl it", "error", err)
-				results <- revCheckResult{err: err}
-				return
+		rev, err := bgs.repoman.GetRepoRev(ctx, ai.Uid)
+		if err != nil {
+			log.Warnw("recrawling because we failed to get the local repo root", "err", err, "uid", ai.Uid)
+			results <- revCheckResult{ai: ai}
+			return
+		}
+
+		if rev == "" || rev < r.Rev {
+			log.Warnw("recrawling because the repo rev from the PDS is newer than our local repo rev", "local_rev", rev)
+			results <- revCheckResult{ai: ai}
+			return
+		}
+
+		results <- revCheckResult{}
+	}
+
+	repoCh := make(chan comatproto.SyncListRepos_Repo)
+	go func() {
+		for _, r := range repos {
+			repoCh <- r
+		}
+		close(repoCh)
+	}()
+
+	for i := 0; i < 20; i++ {
+		go func() {
+			for r := range repoCh {
+				checkRepo(r)
 			}
-
-			rev, err := bgs.repoman.GetRepoRev(ctx, ai.Uid)
-			if err != nil {
-				log.Warnw("recrawling because we failed to get the local repo root", "err", err, "uid", ai.Uid)
-				results <- revCheckResult{ai: ai}
-				return
-			}
-
-			if rev == "" || rev < r.Rev {
-				log.Warnw("recrawling because the repo rev from the PDS is newer than our local repo rev", "local_rev", rev)
-				results <- revCheckResult{ai: ai}
-				return
-			}
-
-			results <- revCheckResult{}
-		}(r)
+		}()
 	}
 
 	var numReposToResync int

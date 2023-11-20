@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -81,7 +82,7 @@ func (e *Error) IsThrottled() bool {
 	return e.StatusCode == http.StatusTooManyRequests
 }
 
-func errorFromHTTPResponse(resp *http.Response, err error) error {
+func ErrorFromHTTPResponse(resp *http.Response, err error) error {
 	r := &Error{
 		StatusCode: resp.StatusCode,
 		Wrapped:    err,
@@ -198,9 +199,9 @@ func (c *Client) Do(ctx context.Context, kind XRPCRequestType, inpenc string, me
 	if resp.StatusCode != 200 {
 		var xe XRPCError
 		if err := json.NewDecoder(resp.Body).Decode(&xe); err != nil {
-			return errorFromHTTPResponse(resp, fmt.Errorf("failed to decode xrpc error message: %w", err))
+			return ErrorFromHTTPResponse(resp, fmt.Errorf("failed to decode xrpc error message: %w", err))
 		}
-		return errorFromHTTPResponse(resp, &xe)
+		return ErrorFromHTTPResponse(resp, &xe)
 	}
 
 	if out != nil {
@@ -217,6 +218,7 @@ func (c *Client) Do(ctx context.Context, kind XRPCRequestType, inpenc string, me
 				}
 			}
 		} else {
+			log.Printf("%T", out)
 			if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 				return fmt.Errorf("decoding xrpc response: %w", err)
 			}

@@ -13,13 +13,16 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/bluesky-social/indigo/xrpc"
 	did "github.com/whyrusleeping/go-did"
 	otel "go.opentelemetry.io/otel"
+	"golang.org/x/time/rate"
 )
 
 type PLCServer struct {
-	Host string
-	C    *http.Client
+	Host    string
+	C       *http.Client
+	Limiter *rate.Limiter
 }
 
 func (s *PLCServer) GetDocument(ctx context.Context, didstr string) (*did.Document, error) {
@@ -29,7 +32,11 @@ func (s *PLCServer) GetDocument(ctx context.Context, didstr string) (*did.Docume
 	if s.C == nil {
 		s.C = http.DefaultClient
 	}
+	if s.Limiter == nil {
+		s.Limiter = rate.NewLimiter(rate.Limit(10000/300), 100)
+	}
 
+	s.Limiter.Wait(ctx)
 	req, err := http.NewRequest("GET", s.Host+"/"+didstr, nil)
 	if err != nil {
 		return nil, err
@@ -43,7 +50,7 @@ func (s *PLCServer) GetDocument(ctx context.Context, didstr string) (*did.Docume
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("get did request failed (code %d): %s", resp.StatusCode, resp.Status)
+		return nil, xrpc.ErrorFromHTTPResponse(resp, fmt.Errorf("get did request failed"))
 	}
 
 	var doc did.Document

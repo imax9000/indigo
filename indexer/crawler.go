@@ -7,6 +7,7 @@ import (
 
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/models"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"go.opentelemetry.io/otel"
 )
@@ -137,6 +138,8 @@ func (c *CrawlDispatcher) mainLoop() {
 					jobsAwaitingDispatch = append(jobsAwaitingDispatch, job)
 				}
 			}
+			crawlTasks.With(prometheus.Labels{"state": "inProgress"}).Set(float64(len(c.inProgress)))
+			crawlTasks.With(prometheus.Labels{"state": "todo"}).Set(float64(len(c.todo)))
 			c.maplk.Unlock()
 		}
 	}
@@ -170,6 +173,8 @@ func (c *CrawlDispatcher) dequeueJob(job *crawlWork) {
 	defer c.maplk.Unlock()
 	delete(c.todo, job.act.Uid)
 	c.inProgress[job.act.Uid] = job
+	crawlTasks.With(prometheus.Labels{"state": "inProgress"}).Set(float64(len(c.inProgress)))
+	crawlTasks.With(prometheus.Labels{"state": "todo"}).Set(float64(len(c.todo)))
 }
 
 func (c *CrawlDispatcher) addToCatchupQueue(catchup *catchupJob) *crawlWork {
@@ -197,6 +202,10 @@ func (c *CrawlDispatcher) addToCatchupQueue(catchup *catchupJob) *crawlWork {
 		catchup: []*catchupJob{catchup},
 	}
 	c.todo[catchup.user.Uid] = cw
+
+	crawlTasks.With(prometheus.Labels{"state": "inProgress"}).Set(float64(len(c.inProgress)))
+	crawlTasks.With(prometheus.Labels{"state": "todo"}).Set(float64(len(c.todo)))
+
 	return cw
 }
 
@@ -206,6 +215,9 @@ func (c *CrawlDispatcher) fetchWorker() {
 		case job := <-c.repoSync:
 			if err := c.doRepoCrawl(context.TODO(), job); err != nil {
 				log.Errorf("failed to perform repo crawl of %q: %s", job.act.Did, err)
+				crawlTasksCompleted.With(prometheus.Labels{"status": "fail"}).Inc()
+			} else {
+				crawlTasksCompleted.With(prometheus.Labels{"status": "success"}).Inc()
 			}
 
 			// TODO: do we still just do this if it errors?
@@ -219,13 +231,12 @@ func (c *CrawlDispatcher) Crawl(ctx context.Context, ai *models.ActorInfo) error
 		panic("must have pds for user in queue")
 	}
 
-	userCrawlsEnqueued.Inc()
-
 	ctx, span := otel.Tracer("crawler").Start(ctx, "addToCrawler")
 	defer span.End()
 
 	select {
 	case c.ingest <- ai:
+		userCrawlsEnqueued.Inc()
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()

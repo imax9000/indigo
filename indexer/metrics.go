@@ -20,6 +20,16 @@ var userCrawlsEnqueued = promauto.NewCounter(prometheus.CounterOpts{
 	Help: "Number of user crawls enqueued",
 })
 
+var crawlTasks = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	Name: "indexer_crawl_tasks",
+	Help: "Current number of crawl tasks",
+}, []string{"state"})
+
+var crawlTasksCompleted = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "indexer_crawl_tasks_completed",
+	Help: "Number of completed crawl tasks",
+}, []string{"status"})
+
 var reposFetched = promauto.NewCounterVec(prometheus.CounterOpts{
 	Name: "indexer_repos_fetched",
 	Help: "Number of repos fetched",

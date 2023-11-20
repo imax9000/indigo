@@ -6,8 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
+	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	atproto "github.com/bluesky-social/indigo/api/atproto"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
@@ -17,6 +20,7 @@ import (
 	"github.com/bluesky-social/indigo/mst"
 	"github.com/bluesky-social/indigo/repo"
 	"github.com/bluesky-social/indigo/util"
+	"github.com/bluesky-social/indigo/xrpc"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -548,7 +552,15 @@ func (rm *RepoManager) HandleExternalUserEvent(ctx context.Context, pdsid uint, 
 		return fmt.Errorf("opening external user repo (%d, root=%s): %w", uid, root, err)
 	}
 
+retry:
 	if err := rm.CheckRepoSig(ctx, r, did); err != nil {
+		var xrpcErr *xrpc.Error
+		if errors.As(err, &xrpcErr) {
+			if xrpcErr.StatusCode == http.StatusTooManyRequests {
+				time.Sleep(time.Minute + time.Duration(rand.Intn(30))*time.Second)
+				goto retry
+			}
+		}
 		return err
 	}
 
@@ -817,7 +829,15 @@ func (rm *RepoManager) ImportNewRepo(ctx context.Context, user models.Uid, repoD
 		if err != nil {
 			return fmt.Errorf("commit serialization failed: %w", err)
 		}
+	retry:
 		if err := rm.kmgr.VerifyUserSignature(ctx, repoDid, scom.Sig, sb); err != nil {
+			var xrpcErr *xrpc.Error
+			if errors.As(err, &xrpcErr) {
+				if xrpcErr.StatusCode == http.StatusTooManyRequests {
+					time.Sleep(time.Minute + time.Duration(rand.Intn(30))*time.Second)
+					goto retry
+				}
+			}
 			return fmt.Errorf("new user signature check failed: %w", err)
 		}
 
