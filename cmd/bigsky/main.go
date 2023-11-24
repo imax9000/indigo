@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	stdlog "log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -40,6 +41,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
+	"gorm.io/gorm/logger"
 	"gorm.io/plugin/opentelemetry/tracing"
 )
 
@@ -215,6 +217,13 @@ func Bigsky(cctx *cli.Context) error {
 	if err := os.MkdirAll(datadir, os.ModePerm); err != nil {
 		return err
 	}
+
+	logger.Default = logger.New(stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags), logger.Config{
+		SlowThreshold:             5 * time.Second,
+		LogLevel:                  logger.Warn,
+		IgnoreRecordNotFoundError: false,
+		Colorful:                  true,
+	})
 
 	log.Infow("setting up main database")
 	dburl := cctx.String("db-url")

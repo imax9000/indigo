@@ -8,9 +8,9 @@ import (
 // ThroughputManager keeps track of the number of tasks processed per bucketDuration over a specified bucketCount.
 type ThroughputManager struct {
 	mu             sync.Mutex
-	circular       []int
+	counts         []int
+	durations      []time.Duration
 	pos            int
-	sum            int
 	bucketCount    int
 	bucketDuration time.Duration
 	in             chan struct{}
@@ -20,7 +20,8 @@ type ThroughputManager struct {
 // NewThroughputManager creates a new ThroughputManager with the specified interval.
 func NewThroughputManager(bucketCount int, bucketDuration time.Duration) *ThroughputManager {
 	return &ThroughputManager{
-		circular:       make([]int, bucketCount),
+		counts:         make([]int, bucketCount),
+		durations:      make([]time.Duration, bucketCount),
 		bucketCount:    bucketCount,
 		bucketDuration: bucketDuration,
 		in:             make(chan struct{}),
@@ -34,8 +35,7 @@ func (m *ThroughputManager) Add(n int) {
 	defer m.mu.Unlock()
 
 	// increment the current position's value
-	m.circular[m.pos] += n
-	m.sum += n
+	m.counts[m.pos] += n
 }
 
 // AvgThroughput returns the average number of tasks processed per
@@ -44,7 +44,11 @@ func (m *ThroughputManager) AvgThroughput() float64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	return float64(m.sum) / float64(m.bucketCount)
+	sum := 0
+	for _, n := range m.counts {
+		sum += n
+	}
+	return float64(sum) / float64(m.bucketCount)
 }
 
 // shift shifts the position in the circular buffer every bucketDuration, resetting the old value.
@@ -56,8 +60,7 @@ func (m *ThroughputManager) shift() {
 			m.mu.Lock()
 
 			m.pos = (m.pos + 1) % m.bucketCount
-			m.sum -= m.circular[m.pos]
-			m.circular[m.pos] = 0
+			m.counts[m.pos] = 0
 
 			m.mu.Unlock()
 		case <-m.in:

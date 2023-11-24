@@ -11,7 +11,7 @@ import (
 
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/events"
-	"github.com/bluesky-social/indigo/events/schedulers/autoscaling"
+	"github.com/bluesky-social/indigo/events/schedulers/parallel"
 	"github.com/bluesky-social/indigo/models"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/time/rate"
@@ -412,6 +412,7 @@ func (s *Slurper) subscribeWithRedialer(ctx context.Context, host *models.PDS, s
 
 			continue
 		}
+		backoff = 0
 
 		log.Info("event subscription response code: ", res.StatusCode)
 
@@ -536,16 +537,7 @@ func (s *Slurper) handleConnection(ctx context.Context, host *models.PDS, con *w
 
 	instrumentedRSC := events.NewInstrumentedRepoStreamCallbacks(limiter, rsc.EventHandler)
 
-	scalingSettings := autoscaling.AutoscaleSettings{
-		Concurrency:                 1,
-		MaxConcurrency:              360,
-		AutoscaleFrequency:          time.Second,
-		ThroughputBucketCount:       60,
-		ThroughputBucketDuration:    time.Second,
-		MaximumBufferedItemsPerRepo: 100,
-	}
-
-	pool := autoscaling.NewScheduler(scalingSettings, con.RemoteAddr().String(), instrumentedRSC.EventHandler)
+	pool := parallel.NewScheduler(20, 10000, con.RemoteAddr().String(), instrumentedRSC.EventHandler)
 	return events.HandleRepoStream(ctx, con, pool)
 }
 

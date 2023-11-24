@@ -820,6 +820,13 @@ func (bgs *BGS) handleFedEvent(ctx context.Context, host *models.PDS, env *event
 		repoCommitsReceivedCounter.WithLabelValues(host.Host).Add(1)
 		evt := env.RepoCommit
 		log.Debugw("bgs got repo append event", "seq", evt.Seq, "host", host.Host, "repo", evt.Repo)
+
+		if t, err := time.Parse(time.RFC3339, evt.Time); err != nil {
+			log.Warnf("invalid commit timestamp %q from %q: %s", evt.Time, host.Host, err)
+		} else {
+			repoCommitTimestamp.WithLabelValues(host.Host).Set(float64(t.Unix()))
+		}
+
 		u, err := bgs.lookupUserByDid(ctx, evt.Repo)
 		if err != nil {
 			if !errors.Is(err, gorm.ErrRecordNotFound) {

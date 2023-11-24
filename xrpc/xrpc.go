@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -218,7 +217,6 @@ func (c *Client) Do(ctx context.Context, kind XRPCRequestType, inpenc string, me
 				}
 			}
 		} else {
-			log.Printf("%T", out)
 			if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 				return fmt.Errorf("decoding xrpc response: %w", err)
 			}

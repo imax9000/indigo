@@ -426,7 +426,7 @@ func (ix *Indexer) handleRecordDelete(ctx context.Context, evt *repomgr.RepoEven
 		   }
 		*/
 
-	case "app.bsky.feed.vote":
+	case "app.bsky.feed.vote", "app.bsky.feed.like":
 		return ix.handleRecordDeleteFeedLike(ctx, evt, op)
 	case "app.bsky.graph.follow":
 		return ix.handleRecordDeleteGraphFollow(ctx, evt, op)
@@ -480,6 +480,10 @@ func (ix *Indexer) handleRecordDeleteGraphFollow(ctx context.Context, evt *repom
 
 func (ix *Indexer) handleRecordCreate(ctx context.Context, evt *repomgr.RepoEvent, op *repomgr.RepoOp, local bool) ([]uint, error) {
 	log.Debugw("record create event", "collection", op.Collection)
+
+	if op.Record == nil {
+		return nil, fmt.Errorf("nil record op=%+v", op)
+	}
 
 	var out []uint
 	switch rec := op.Record.(type) {
@@ -555,7 +559,7 @@ func (ix *Indexer) handleRecordCreateFeedLike(ctx context.Context, rec *bsky.Fee
 		Rkey:    op.Rkey,
 		Cid:     op.RecCid.String(),
 	}
-	if err := ix.db.Create(&vr).Error; err != nil {
+	if err := ix.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&vr).Error; err != nil {
 		return err
 	}
 
@@ -591,7 +595,7 @@ func (ix *Indexer) handleRecordCreateGraphFollow(ctx context.Context, rec *bsky.
 		Rkey:     op.Rkey,
 		Cid:      op.RecCid.String(),
 	}
-	if err := ix.db.Create(&fr).Error; err != nil {
+	if err := ix.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&fr).Error; err != nil {
 		return err
 	}
 
@@ -702,7 +706,7 @@ func (ix *Indexer) GetPostOrMissing(ctx context.Context, uri string) (*models.Fe
 	}
 
 	var post models.FeedPost
-	if err := ix.db.Find(&post, "rkey = ? AND author = (?)", puri.Rkey, ix.db.Model(models.ActorInfo{}).Where("did = ?", puri.Did).Select("id")).Error; err != nil {
+	if err := ix.db.Find(&post, "rkey = ?", puri.Rkey).Error; err != nil {
 		return nil, err
 	}
 

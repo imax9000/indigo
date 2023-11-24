@@ -79,7 +79,6 @@ func NewScheduler(autoscaleSettings AutoscaleSettings, ident string, do func(con
 		do: do,
 
 		feeder:      make(chan *consumerTask),
-		active:      make(map[string][]*consumerTask),
 		maxActive:   autoscaleSettings.MaximumBufferedItemsPerRepo,
 		workerGroup: sync.WaitGroup{},
 
@@ -173,20 +172,6 @@ func (p *Scheduler) AddWork(ctx context.Context, repo string, val *events.XRPCSt
 		repo: repo,
 		val:  val,
 	}
-	p.lk.Lock()
-
-	a, ok := p.active[repo]
-	if ok {
-		if len(a) >= p.maxActive {
-			// TODO: Need a pattern to prevent buffer stuffing
-		}
-		p.active[repo] = append(a, t)
-		p.lk.Unlock()
-		return nil
-	}
-
-	p.active[repo] = []*consumerTask{}
-	p.lk.Unlock()
 
 	select {
 	case p.feeder <- t:
@@ -215,21 +200,6 @@ func (p *Scheduler) worker() {
 				log.Errorf("event handler failed: %s", err)
 			}
 			p.itemsProcessed.Inc()
-
-			p.lk.Lock()
-			rem, ok := p.active[work.repo]
-			if !ok {
-				log.Errorf("should always have an 'active' entry if a worker is processing a job")
-			}
-
-			if len(rem) == 0 {
-				delete(p.active, work.repo)
-				work = nil
-			} else {
-				work = rem[0]
-				p.active[work.repo] = rem[1:]
-			}
-			p.lk.Unlock()
 		}
 	}
 }

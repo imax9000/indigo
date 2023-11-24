@@ -27,6 +27,11 @@ var repoCommitsReceivedCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 	Help: "The total number of events received",
 }, []string{"pds"})
 
+var repoCommitTimestamp = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	Name: "repo_commit_received_timestamp",
+	Help: "Timestamp of the last commit received",
+}, []string{"pds"})
+
 var rebasesCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 	Name: "event_rebases",
 	Help: "The total number of rebase events received",

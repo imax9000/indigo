@@ -157,8 +157,9 @@ func (uv *userView) Has(ctx context.Context, k cid.Cid) (bool, error) {
 	if err := uv.cs.meta.
 		Model(blockRef{}).
 		Select("path, block_refs.offset").
+		Where("cid = ?", models.DbCID{CID: k}).
 		Joins("left join car_shards on block_refs.shard = car_shards.id").
-		Where("usr = ? AND cid = ?", uv.user, models.DbCID{k}).
+		Where("usr = ?", uv.user).
 		Count(&count).Error; err != nil {
 		return false, err
 	}
