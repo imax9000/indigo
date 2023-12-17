@@ -156,7 +156,7 @@ func Bigsky(cctx *cli.Context) error {
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 
 	if cctx.Bool("jaeger") {
-		url := "http://localhost:14268/api/traces"
+		url := "http://192.168.17.250:14268/api/traces"
 		exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(url)))
 		if err != nil {
 			return err

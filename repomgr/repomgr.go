@@ -797,13 +797,14 @@ func (rm *RepoManager) ImportNewRepo(ctx context.Context, user models.Uid, repoD
 
 	currev, err := rm.cs.GetUserRepoRev(ctx, user)
 	if err != nil {
-		return err
+		return fmt.Errorf("GetUserRepoRev: %w", err)
 	}
 
 	curhead, err := rm.cs.GetUserRepoHead(ctx, user)
 	if err != nil {
-		return err
+		return fmt.Errorf("GetUserRepoHead: %w", err)
 	}
+	log.Debugf("curhead: %s", curhead)
 
 	if rev == nil {
 		// if 'rev' is nil, this implies a fresh sync.
@@ -861,7 +862,7 @@ func (rm *RepoManager) ImportNewRepo(ctx context.Context, user models.Uid, repoD
 
 		slice, err := finish(ctx, scom.Rev)
 		if err != nil {
-			return err
+			return fmt.Errorf("finish callback: %w", err)
 		}
 
 		if rm.events != nil {
@@ -879,7 +880,7 @@ func (rm *RepoManager) ImportNewRepo(ctx context.Context, user models.Uid, repoD
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("process new repo (current rev: %s): %w:", currev, err)
+		return fmt.Errorf("process new repo (current rev: %s): %w", currev, err)
 	}
 
 	return nil
@@ -944,7 +945,7 @@ func (rm *RepoManager) processNewRepo(ctx context.Context, user models.Uid, r io
 
 	carr, err := car.NewCarReader(r)
 	if err != nil {
-		return err
+		return fmt.Errorf("constructing car reader: %w", err)
 	}
 
 	if len(carr.Header.Roots) != 1 {
@@ -959,11 +960,11 @@ func (rm *RepoManager) processNewRepo(ctx context.Context, user models.Uid, r io
 			if err == io.EOF {
 				break
 			}
-			return err
+			return fmt.Errorf("reading next block: %w", err)
 		}
 
 		if err := membs.Put(ctx, blk); err != nil {
-			return err
+			return fmt.Errorf("writing block to blockstore: %w", err)
 		}
 	}
 
@@ -991,7 +992,7 @@ func (rm *RepoManager) processNewRepo(ctx context.Context, user models.Uid, r io
 		}
 
 		if err := ds.Put(ctx, blk); err != nil {
-			return err
+			return fmt.Errorf("adding block to delta session: %w", err)
 		}
 	}
 
@@ -1023,7 +1024,7 @@ func walkTree(ctx context.Context, skip map[cid.Cid]bool, root cid.Cid, bs block
 
 	blk, err := bs.Get(ctx, root)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting root: %w", err)
 	}
 
 	var links []cid.Cid
@@ -1041,7 +1042,7 @@ func walkTree(ctx context.Context, skip map[cid.Cid]bool, root cid.Cid, bs block
 
 		return
 	}); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ScanForLinks: %w", err)
 	}
 
 	out := []cid.Cid{root}
@@ -1052,7 +1053,7 @@ func walkTree(ctx context.Context, skip map[cid.Cid]bool, root cid.Cid, bs block
 		sub, err := walkTree(ctx, skip, c, bs, prevMissing)
 		if err != nil {
 			if prevMissing && !ipld.IsNotFound(err) {
-				return nil, err
+				return nil, fmt.Errorf("%s->%w", root.String(), err)
 			}
 		}
 

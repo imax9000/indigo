@@ -337,6 +337,8 @@ func (bgs *BGS) StartWithListener(listen net.Listener) error {
 		}
 	}
 
+	e.GET("/test", bgs.handleTest)
+
 	// TODO: this API is temporary until we formalize what we want here
 
 	e.GET("/xrpc/com.atproto.sync.subscribeRepos", bgs.EventsHandler)

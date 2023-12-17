@@ -95,7 +95,10 @@ func (rf *RepoFetcher) FetchAndIndexRepo(ctx context.Context, job *crawlWork) er
 	ctx, span := otel.Tracer("indexer").Start(ctx, "FetchAndIndexRepo")
 	defer span.End()
 
-	span.SetAttributes(attribute.Int("catchup", len(job.catchup)))
+	span.SetAttributes(
+		attribute.Int("catchup", len(job.catchup)),
+		attribute.String("did", job.act.Did),
+	)
 
 	ai := job.act
 
@@ -112,9 +115,14 @@ func (rf *RepoFetcher) FetchAndIndexRepo(ctx context.Context, job *crawlWork) er
 	// attempt to process buffered events
 	if !job.initScrape && len(job.catchup) > 0 {
 		first := job.catchup[0]
-		var resync bool
-		if first.evt.Since == nil || rev == *first.evt.Since {
+		if first.evt != nil && (first.evt.Since == nil || rev == *first.evt.Since) {
+			resync := false
 			for i, j := range job.catchup {
+				if j.evt == nil {
+					log.Errorw("job.evt == nil", "job", job)
+					continue
+				}
+
 				catchupEventsProcessed.Inc()
 				if err := rf.repoman.HandleExternalUserEvent(ctx, pds.ID, ai.Uid, ai.Did, j.evt.Since, j.evt.Rev, j.evt.Blocks, j.evt.Ops); err != nil {
 					log.Errorw("buffered event catchup failed", "error", err, "did", ai.Did, "i", i, "jobCount", len(job.catchup), "seq", j.evt.Seq)
@@ -145,16 +153,19 @@ func (rf *RepoFetcher) FetchAndIndexRepo(ctx context.Context, job *crawlWork) er
 		span.RecordError(err)
 
 		if ipld.IsNotFound(err) {
-			log.Errorw("partial repo fetch was missing data", "did", ai.Did, "pds", pds.Host, "rev", rev)
+			log.Errorw("partial repo fetch was missing data", "did", ai.Did, "pds", pds.Host, "rev", rev, "error", err)
 			repo, err := rf.fetchRepo(ctx, c, &pds, ai.Did, "")
 			if err != nil {
+				log.Errorw("failed to fetch the full repo", "did", ai.Did, "pds", pds.Host)
 				return err
 			}
 
 			if err := rf.repoman.ImportNewRepo(ctx, ai.Uid, ai.Did, bytes.NewReader(repo), nil); err != nil {
 				span.RecordError(err)
+				log.Errorw("full repo import failed", "error", err, "did", ai.Did, "pds", pds.Host)
 				return fmt.Errorf("failed to import backup repo (%s): %w", ai.Did, err)
 			}
+			log.Warnw("full repo import completed successfully", "did", ai.Did, "pds", pds.Host)
 
 			return nil
 		}

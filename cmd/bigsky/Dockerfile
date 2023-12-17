@@ -6,8 +6,13 @@
 FROM golang:1.21-alpine3.18 AS build-env
 RUN apk add --no-cache build-base make git
 
-ADD . /dockerbuild
 WORKDIR /dockerbuild
+# Fetch deps first, so that regular code changes don't invalidate
+# this layer in the build cache.
+COPY go.mod go.sum ./
+RUN go mod download
+
+ADD . /dockerbuild
 
 # timezone data for alpine builds
 ENV GOEXPERIMENT=loopvar

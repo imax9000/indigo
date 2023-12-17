@@ -167,6 +167,12 @@ func (c *CrawlDispatcher) enqueueJobForActor(ai *models.ActorInfo) *crawlWork {
 	return crawlJob
 }
 
+func (c *CrawlDispatcher) TODOQueueLen() int {
+	c.maplk.Lock()
+	defer c.maplk.Unlock()
+	return len(c.todo)
+}
+
 // dequeueJob removes a job from the todo list and adds it to the inProgress list
 func (c *CrawlDispatcher) dequeueJob(job *crawlWork) {
 	c.maplk.Lock()

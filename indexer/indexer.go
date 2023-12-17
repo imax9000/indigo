@@ -68,7 +68,7 @@ func NewIndexer(db *gorm.DB, notifman notifs.NotificationManager, evtman *events
 	}
 
 	if crawl {
-		c, err := NewCrawlDispatcher(fetcher.FetchAndIndexRepo, 10)
+		c, err := NewCrawlDispatcher(fetcher.FetchAndIndexRepo, 100)
 		if err != nil {
 			return nil, err
 		}
@@ -96,7 +96,7 @@ func (ix *Indexer) HandleRepoEvent(ctx context.Context, evt *repomgr.RepoEvent) 
 		})
 
 		if err := ix.handleRepoOp(ctx, evt, &op); err != nil {
-			log.Errorw("failed to handle repo op", "err", err)
+			log.Errorw("failed to handle repo op", "err", err, "kind", op.Kind, "collection", op.Collection)
 		}
 	}
 
@@ -433,7 +433,7 @@ func (ix *Indexer) handleRecordDelete(ctx context.Context, evt *repomgr.RepoEven
 	case "app.bsky.graph.confirmation":
 		return nil
 	default:
-		return fmt.Errorf("unrecognized record type (delete): %q", op.Collection)
+		log.Warnf("unrecognized record type: %q", op.Collection)
 	}
 
 	return nil
@@ -535,7 +535,7 @@ func (ix *Indexer) handleRecordCreate(ctx context.Context, evt *repomgr.RepoEven
 	case *bsky.ActorProfile:
 		log.Debugf("TODO: got actor profile record creation, need to do something with this")
 	default:
-		return nil, fmt.Errorf("unrecognized record type: %T", rec)
+		log.Warnf("unrecognized record type: %T", rec)
 	}
 
 	return out, nil
@@ -693,7 +693,7 @@ func (ix *Indexer) handleRecordUpdate(ctx context.Context, evt *repomgr.RepoEven
 	case *bsky.ActorProfile:
 		log.Debugf("TODO: got actor profile record update, need to do something with this")
 	default:
-		return fmt.Errorf("unrecognized record type: %T", rec)
+		log.Warnf("unrecognized record type: %T", rec)
 	}
 
 	return nil
@@ -765,7 +765,7 @@ func (ix *Indexer) handleRecordCreateFeedPost(ctx context.Context, user models.U
 		// we're likely filling in a missing reference
 		if !maybe.Missing {
 			// TODO: we've already processed this record creation
-			log.Warnw("potentially erroneous event, duplicate create", "rkey", rkey, "user", user)
+			//log.Warnw("potentially erroneous event, duplicate create", "rkey", rkey, "user", user)
 		}
 
 		if err := ix.db.Clauses(clause.OnConflict{
@@ -811,7 +811,7 @@ func (ix *Indexer) addNewPostNotification(ctx context.Context, post *bsky.FeedPo
 	if post.Reply != nil {
 		replyto, err := ix.GetPost(ctx, post.Reply.Parent.Uri)
 		if err != nil {
-			log.Error("probably shouldn't error when processing a reply to a not-found post")
+			//log.Error("probably shouldn't error when processing a reply to a not-found post")
 			return err
 		}
 
