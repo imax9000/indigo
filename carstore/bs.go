@@ -1282,6 +1282,7 @@ func (cs *CarStore) CompactUserShards(ctx context.Context, user models.Uid, skip
 	if err := cs.meta.WithContext(ctx).Find(&shards, "usr = ?", user).Error; err != nil {
 		return nil, err
 	}
+	totalShards := len(shards)
 
 	sort.Slice(shards, func(i, j int) bool {
 		return shards[i].Seq < shards[j].Seq
@@ -1313,6 +1314,7 @@ func (cs *CarStore) CompactUserShards(ctx context.Context, user models.Uid, skip
 		shards = shards[skip:]
 	}
 
+	log.Infow("got the list of shards, getting the list of refs", "shardsToCompact", len(shards), "totalShards", totalShards)
 	span.SetAttributes(attribute.Int("shards", len(shards)))
 
 	var shardIds []uint
@@ -1450,7 +1452,7 @@ func (cs *CarStore) CompactUserShards(ctx context.Context, user models.Uid, skip
 	}
 
 	removedShards := make(map[uint]bool)
-	for _, b := range compactionQueue {
+	for i, b := range compactionQueue {
 		if !b.shouldCompact() {
 			stats.SkippedShards += len(b.shards)
 			continue
@@ -1473,12 +1475,14 @@ func (cs *CarStore) CompactUserShards(ctx context.Context, user models.Uid, skip
 			todelete = append(todelete, &sh)
 		}
 
+		log.Infof("compacted bucket %d/%d, deleting %d stale shards", i+1, len(compactionQueue), len(todelete))
 		stats.ShardsDeleted += len(todelete)
 		if err := cs.deleteShards(ctx, todelete); err != nil {
 			return nil, fmt.Errorf("deleting shards: %w", err)
 		}
 	}
 
+	log.Infof("deleting stale refs")
 	// now we need to delete the staleRefs we successfully cleaned up
 	// we can safely delete a staleRef if all the shards that have blockRefs with matching stale refs were processed
 	if err := cs.deleteStaleRefs(ctx, user, brefs, staleRefs, removedShards); err != nil {

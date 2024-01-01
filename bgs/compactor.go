@@ -290,6 +290,7 @@ func (c *Compactor) compactNext(ctx context.Context, bgs *BGS) (*CompactorState,
 	span.SetAttributes(attribute.String("repo", user.Did), attribute.Int("uid", int(item.uid)))
 
 	c.SetState(item.uid, user.Did, "compacting", nil)
+	log.Infow("starting repo compaction", "repo", user.Did)
 
 	start := time.Now()
 	st, err := bgs.repoman.CarStore().CompactUserShards(ctx, item.uid, item.fast)
@@ -356,11 +357,16 @@ func (c *Compactor) EnqueueAllRepos(ctx context.Context, bgs *BGS, lim int, shar
 
 	span.SetAttributes(attribute.Int("clampedRepos", len(repos)))
 
+	enqueued := 0
 	for _, r := range repos {
+		if c.q.Has(r.Usr) {
+			continue
+		}
 		c.q.Append(r.Usr, fast)
+		enqueued++
 	}
 
-	log.Infow("done enqueueing all repos", "repos_enqueued", len(repos))
+	log.Infow("done enqueueing all repos", "repos_enqueued", enqueued)
 
 	return nil
 }

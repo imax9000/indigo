@@ -21,6 +21,7 @@ import (
 	"github.com/bluesky-social/indigo/repo"
 	"github.com/bluesky-social/indigo/util"
 	"github.com/bluesky-social/indigo/xrpc"
+	"golang.org/x/time/rate"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -40,9 +41,10 @@ var log = logging.Logger("repomgr")
 func NewRepoManager(cs *carstore.CarStore, kmgr KeyManager) *RepoManager {
 
 	return &RepoManager{
-		cs:        cs,
-		userLocks: make(map[models.Uid]*userLock),
-		kmgr:      kmgr,
+		cs:            cs,
+		userLocks:     make(map[models.Uid]*userLock),
+		kmgr:          kmgr,
+		importLimiter: rate.NewLimiter(2000, 100),
 	}
 }
 
@@ -65,6 +67,8 @@ type RepoManager struct {
 
 	events         func(context.Context, *RepoEvent)
 	hydrateRecords bool
+
+	importLimiter *rate.Limiter
 }
 
 type ActorInfo struct {
@@ -849,6 +853,7 @@ func (rm *RepoManager) ImportNewRepo(ctx context.Context, user models.Uid, repoD
 
 		var ops []RepoOp
 		for _, op := range diffops {
+			rm.importLimiter.Wait(ctx)
 			repoOpsImported.Inc()
 			out, err := processOp(ctx, bs, op, rm.hydrateRecords)
 			if err != nil {
