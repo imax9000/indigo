@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bluesky-social/indigo/models"
+	logging "github.com/ipfs/go-log"
 	"github.com/labstack/echo/v4"
 	dto "github.com/prometheus/client_model/go"
 	"go.opentelemetry.io/otel"
@@ -560,6 +561,21 @@ func (bgs *BGS) handleAdminAddTrustedDomain(e echo.Context) error {
 	}
 
 	if err := bgs.slurper.AddTrustedDomain(domain); err != nil {
+		return err
+	}
+
+	return e.JSON(200, map[string]any{
+		"success": true,
+	})
+}
+
+func (bgs *BGS) handleSetLogLevel(e echo.Context) error {
+	subsys := e.QueryParam("name")
+	level := e.QueryParam("level")
+	if subsys == "" || level == "" {
+		return fmt.Errorf("must specify name and level")
+	}
+	if err := logging.SetLogLevel(subsys, level); err != nil {
 		return err
 	}
 

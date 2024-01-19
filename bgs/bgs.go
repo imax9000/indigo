@@ -359,6 +359,8 @@ func (bgs *BGS) StartWithListener(listen net.Listener) error {
 
 	admin := e.Group("/admin", bgs.checkAdminAuth)
 
+	admin.POST("/setLogLevel", bgs.handleSetLogLevel)
+
 	// Slurper-related Admin API
 	admin.GET("/subs/getUpstreamConns", bgs.handleAdminGetUpstreamConns)
 	admin.GET("/subs/getEnabled", bgs.handleAdminGetSubsEnabled)
