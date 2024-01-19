@@ -44,7 +44,7 @@ func NewRepoManager(cs *carstore.CarStore, kmgr KeyManager) *RepoManager {
 		cs:            cs,
 		userLocks:     make(map[models.Uid]*userLock),
 		kmgr:          kmgr,
-		importLimiter: rate.NewLimiter(2000, 100),
+		importLimiter: rate.NewLimiter(3000, 100),
 	}
 }
 

@@ -311,10 +311,12 @@ func (s *Slurper) SubscribeToPds(ctx context.Context, host string, reg bool) err
 			CrawlRateLimit: float64(s.DefaultCrawlLimit),
 		}
 		if err := s.db.Create(&npds).Error; err != nil {
-			return err
+			if err2 := s.db.Find(&peering, "host = ?", host).Error; err2 != nil {
+				return err
+			}
+		} else {
+			peering = npds
 		}
-
-		peering = npds
 	}
 
 	if !peering.Registered && reg {

@@ -173,8 +173,8 @@ func NewBGS(db *gorm.DB, ix *indexer.Indexer, repoman *repomgr.RepoManager, evtm
 	copts := DefaultCompactorOptions()
 	copts.RequeueFast = false
 	copts.RequeueShardCount = 10
-	copts.RequeueLimit = 100
-	copts.RequeueInterval = 12 * time.Hour
+	copts.RequeueLimit = 1000
+	copts.RequeueInterval = 4 * time.Hour
 	compactor := NewCompactor(copts)
 	compactor.Start(bgs)
 	bgs.compactor = compactor
@@ -1113,13 +1113,18 @@ func (s *BGS) createExternalUser(ctx context.Context, did string) (*models.Actor
 		// TODO: could check other things, a valid response is good enough for now
 		peering.Host = durl.Host
 		peering.SSL = (durl.Scheme == "https")
+		peering.RateLimit = float64(s.slurper.DefaultLimit)
+		peering.CrawlRateLimit = float64(s.slurper.DefaultCrawlLimit)
 
 		if s.ssl && !peering.SSL {
 			return nil, fmt.Errorf("did references non-ssl PDS, this is disallowed in prod: %q %q", did, svc.ServiceEndpoint)
 		}
 
 		if err := s.db.Create(&peering).Error; err != nil {
-			return nil, err
+			// Check if it got created by someone else in the meantime.
+			if err2 := s.db.Find(&peering, "host = ?", durl.Host).Error; err2 != nil {
+				return nil, err
+			}
 		}
 	}
 

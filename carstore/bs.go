@@ -1049,17 +1049,17 @@ func (cs *CarStore) deleteShards(ctx context.Context, shs []*CarShard) error {
 			ids = append(ids, sh.ID)
 		}
 
-		txn := cs.meta.Begin()
+		err := cs.meta.Transaction(func(txn *gorm.DB) error {
+			if err := txn.Delete(&CarShard{}, "id in (?)", ids).Error; err != nil {
+				return err
+			}
 
-		if err := txn.Delete(&CarShard{}, "id in (?)", ids).Error; err != nil {
-			return err
-		}
-
-		if err := txn.Delete(&blockRef{}, "shard in (?)", ids).Error; err != nil {
-			return err
-		}
-
-		if err := txn.Commit().Error; err != nil {
+			if err := txn.Delete(&blockRef{}, "shard in (?)", ids).Error; err != nil {
+				return err
+			}
+			return nil
+		})
+		if err != nil {
 			return err
 		}
 
@@ -1526,23 +1526,25 @@ func (cs *CarStore) deleteStaleRefs(ctx context.Context, uid models.Uid, brefs [
 		}
 	}
 
-	txn := cs.meta.Begin()
-
-	if err := txn.Delete(&staleRef{}, "usr = ?", uid).Error; err != nil {
-		return err
-	}
-
-	// now create a new staleRef with all the refs we couldn't clear out
-	if len(staleToKeep) > 0 {
-		if err := txn.Create(&staleRef{
-			Usr:  uid,
-			Cids: packCids(staleToKeep),
-		}).Error; err != nil {
+	err := cs.meta.Transaction(func(txn *gorm.DB) error {
+		if err := txn.Delete(&staleRef{}, "usr = ?", uid).Error; err != nil {
 			return err
 		}
-	}
 
-	if err := txn.Commit().Error; err != nil {
+		// now create a new staleRef with all the refs we couldn't clear out
+		if len(staleToKeep) > 0 {
+			if err := txn.Create(&staleRef{
+				Usr:  uid,
+				Cids: packCids(staleToKeep),
+			}).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
 		return fmt.Errorf("failed to commit staleRef updates: %w", err)
 	}
 
