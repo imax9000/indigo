@@ -3,6 +3,7 @@ package bgs
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -356,6 +357,15 @@ func (c *Compactor) EnqueueAllRepos(ctx context.Context, bgs *BGS, lim int, shar
 	}
 
 	span.SetAttributes(attribute.Int("clampedRepos", len(repos)))
+
+	top := []string{}
+	for _, r := range repos {
+		if len(top) >= 10 {
+			break
+		}
+		top = append(top, fmt.Sprintf("%d(%d)", r.Usr, r.NumShards))
+	}
+	log.Warnf("top compaction targets: %s", strings.Join(top, ","))
 
 	enqueued := 0
 	for _, r := range repos {

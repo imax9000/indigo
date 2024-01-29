@@ -173,8 +173,8 @@ func NewBGS(db *gorm.DB, ix *indexer.Indexer, repoman *repomgr.RepoManager, evtm
 	copts := DefaultCompactorOptions()
 	copts.RequeueFast = false
 	copts.RequeueShardCount = 10
-	copts.RequeueLimit = 1000
-	copts.RequeueInterval = 4 * time.Hour
+	copts.RequeueLimit = 0
+	copts.RequeueInterval = time.Hour
 	compactor := NewCompactor(copts)
 	compactor.Start(bgs)
 	bgs.compactor = compactor
