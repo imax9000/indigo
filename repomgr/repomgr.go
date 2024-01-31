@@ -41,10 +41,10 @@ var log = logging.Logger("repomgr")
 func NewRepoManager(cs *carstore.CarStore, kmgr KeyManager) *RepoManager {
 
 	return &RepoManager{
-		cs:            cs,
-		userLocks:     make(map[models.Uid]*userLock),
-		kmgr:          kmgr,
-		importLimiter: rate.NewLimiter(3000, 100),
+		cs:        cs,
+		userLocks: make(map[models.Uid]*userLock),
+		kmgr:      kmgr,
+		//importLimiter: rate.NewLimiter(3000, 100),
 	}
 }
 
@@ -853,7 +853,7 @@ func (rm *RepoManager) ImportNewRepo(ctx context.Context, user models.Uid, repoD
 
 		var ops []RepoOp
 		for _, op := range diffops {
-			rm.importLimiter.Wait(ctx)
+			//rm.importLimiter.Wait(ctx)
 			repoOpsImported.Inc()
 			out, err := processOp(ctx, bs, op, rm.hydrateRecords)
 			if err != nil {
