@@ -745,24 +745,38 @@ func (cs *CarStore) putShard(ctx context.Context, shard *CarShard, brefs []map[s
 	ctx, span := otel.Tracer("carstore").Start(ctx, "putShard")
 	defer span.End()
 
-	// TODO: there should be a way to create the shard and block_refs that
-	// reference it in the same query, would save a lot of time
-	tx := cs.meta.WithContext(ctx).Begin()
+	// YOLO: minimizing transaction size by creating only a couple small records,
+	// and adding the rest of records later, outside of a transaction.
+	err := cs.meta.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.WithContext(ctx).Create(shard).Error; err != nil {
+			return fmt.Errorf("failed to create shard in DB tx: %w", err)
+		}
 
-	if err := tx.WithContext(ctx).Create(shard).Error; err != nil {
-		return fmt.Errorf("failed to create shard in DB tx: %w", err)
+		if !nocache {
+			cs.putLastShardCache(shard)
+		}
+
+		for _, ref := range brefs {
+			ref["shard"] = shard.ID
+		}
+
+		if len(brefs) > 0 {
+			// Write just one inside the transaction, so we don't have an orphan shard.
+			if err := createBlockRefs(ctx, tx, brefs[:1]); err != nil {
+				return fmt.Errorf("failed to create block refs: %w", err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to commit shard DB transaction: %w", err)
 	}
 
-	if !nocache {
-		cs.putLastShardCache(shard)
-	}
-
-	for _, ref := range brefs {
-		ref["shard"] = shard.ID
-	}
-
-	if err := createBlockRefs(ctx, tx, brefs); err != nil {
-		return fmt.Errorf("failed to create block refs: %w", err)
+	if len(brefs) > 0 {
+		if err := createBlockRefs(ctx, cs.meta, brefs[1:]); err != nil {
+			return fmt.Errorf("failed to create block refs: %w", err)
+		}
 	}
 
 	if len(rmcids) > 0 {
@@ -771,17 +785,12 @@ func (cs *CarStore) putShard(ctx context.Context, shard *CarShard, brefs []map[s
 			cids = append(cids, c)
 		}
 
-		if err := tx.Create(&staleRef{
+		if err := cs.meta.Create(&staleRef{
 			Cids: packCids(cids),
 			Usr:  shard.Usr,
 		}).Error; err != nil {
 			return err
 		}
-	}
-
-	err := tx.WithContext(ctx).Commit().Error
-	if err != nil {
-		return fmt.Errorf("failed to commit shard DB transaction: %w", err)
 	}
 
 	return nil
