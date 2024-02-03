@@ -597,3 +597,18 @@ func (bgs *BGS) handleAdminCompactionUnpause(e echo.Context) error {
 		"success": true,
 	})
 }
+
+func (bgs *BGS) handleAdminChangeOpsImportRateLimit(e echo.Context) error {
+	s := e.QueryParam("rate")
+	if s == "" {
+		return fmt.Errorf("must specify rate")
+	}
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		return err
+	}
+	bgs.repoman.SetImportRateLimit(v)
+	return e.JSON(200, map[string]any{
+		"success": true,
+	})
+}
