@@ -583,3 +583,17 @@ func (bgs *BGS) handleSetLogLevel(e echo.Context) error {
 		"success": true,
 	})
 }
+
+func (bgs *BGS) handleAdminCompactionPause(e echo.Context) error {
+	bgs.compactor.SetPaused(true)
+	return e.JSON(200, map[string]any{
+		"success": true,
+	})
+}
+
+func (bgs *BGS) handleAdminCompactionUnpause(e echo.Context) error {
+	bgs.compactor.SetPaused(false)
+	return e.JSON(200, map[string]any{
+		"success": true,
+	})
+}

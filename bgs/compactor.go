@@ -117,6 +117,9 @@ type Compactor struct {
 	requeueLimit      int
 	requeueShardCount int
 	requeueFast       bool
+
+	pauseLk sync.Mutex
+	paused  bool
 }
 
 type CompactorOptions struct {
@@ -228,6 +231,12 @@ func (c *Compactor) Shutdown() {
 	log.Info("compactor stopped")
 }
 
+func (c *Compactor) SetPaused(paused bool) {
+	c.pauseLk.Lock()
+	c.paused = paused
+	c.pauseLk.Unlock()
+}
+
 func (c *Compactor) doWork(bgs *BGS) {
 	for {
 		select {
@@ -236,6 +245,14 @@ func (c *Compactor) doWork(bgs *BGS) {
 			close(c.exited)
 			return
 		default:
+		}
+
+		c.pauseLk.Lock()
+		paused := c.paused
+		c.pauseLk.Unlock()
+		if paused {
+			time.Sleep(time.Second)
+			continue
 		}
 
 		ctx := context.Background()
