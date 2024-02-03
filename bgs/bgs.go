@@ -380,6 +380,7 @@ func (bgs *BGS) StartWithListener(listen net.Listener) error {
 	admin.POST("/repo/reset", bgs.handleAdminResetRepo)
 	admin.POST("/repo/compaction/pause", bgs.handleAdminCompactionPause)
 	admin.POST("/repo/compaction/unpause", bgs.handleAdminCompactionUnpause)
+	admin.POST("/repo/changeOpsImportRateLimit", bgs.handleAdminChangeOpsImportRateLimit)
 
 	// PDS-related Admin API
 	admin.GET("/pds/list", bgs.handleListPDSs)
